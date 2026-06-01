@@ -172,7 +172,7 @@ if uploaded_file:
         prompt = f"""
 You are an AI educational teacher.
 
-Analyze the educational content below.
+Analyze the educational content below. And generate the summary of the document, incase it consists of multiple topics, then generate the summary for each topic separately. as three points and incase there are any questions in the document then generate answers for them, incase it is a question bank just gnerate the summary of the all the questions as a group in those three points.Based on the type of document you analyze it and generate the required output. if it is a coding question explain the approach and one example testcase with output, if it is a theoretical question then explain the concept in detail and give one example, if it is a question bank then give the summary of all the questions in three points. understand the document and generate the output accordingly.
 
 Return ONLY valid JSON — no markdown, no explanation, no extra text.
 
