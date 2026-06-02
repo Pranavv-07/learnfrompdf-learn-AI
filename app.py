@@ -129,29 +129,33 @@ def make_animation_frame(t, total_duration):
     CX    = SIZE // 2   # 100
     CY    = SIZE // 2   # 100
 
-    img  = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    # RGB (not RGBA) — moviepy VideoClip requires 3-channel frames.
+    # Use the same dark navy as the video background so it blends seamlessly.
+    img  = Image.new("RGB", (SIZE, SIZE), (20, 20, 40))
     draw = ImageDraw.Draw(img)
 
     # --- pulsing glow: radius oscillates between 28 and 38 ---
     pulse = 28 + 10 * (0.5 + 0.5 * math.sin(2 * math.pi * t / 1.4))
     r = int(pulse)
-    # soft outer halo
+    # soft outer halo (blend into background by mixing toward navy)
     for halo in range(6, 0, -1):
-        alpha = int(30 + halo * 10)
+        blend = halo / 6.0
         hr    = r + halo * 3
-        draw.ellipse(
-            [CX - hr, CY - hr, CX + hr, CY + hr],
-            fill=(80, 140, 255, alpha)
+        halo_color = (
+            int(20 + blend * 60),
+            int(20 + blend * 120),
+            int(40 + blend * 215),
         )
+        draw.ellipse([CX - hr, CY - hr, CX + hr, CY + hr], fill=halo_color)
     # solid centre circle
     draw.ellipse(
         [CX - r, CY - r, CX + r, CY + r],
-        fill=(120, 180, 255, 230)
+        fill=(120, 180, 255)
     )
 
     # --- spinning hexagon ring ---
     hex_r    = 72
-    hex_rot  = (2 * math.pi * t / 6.0)          # full rotation every 6 s
+    hex_rot  = (2 * math.pi * t / 6.0)
     hex_pts  = []
     for k in range(6):
         angle = hex_rot + k * math.pi / 3
@@ -162,31 +166,27 @@ def make_animation_frame(t, total_duration):
     for k in range(6):
         x1, y1 = hex_pts[k]
         x2, y2 = hex_pts[(k + 1) % 6]
-        draw.line([x1, y1, x2, y2], fill=(100, 160, 255, 180), width=2)
+        draw.line([x1, y1, x2, y2], fill=(100, 160, 255), width=2)
 
     # --- three orbiting dots ---
     dot_r     = 58
-    dot_speed = 2 * math.pi * t / 2.5           # full orbit every 2.5 s
+    dot_speed = 2 * math.pi * t / 2.5
     for k in range(3):
         angle = dot_speed + k * 2 * math.pi / 3
         dx    = CX + dot_r * math.cos(angle)
         dy    = CY + dot_r * math.sin(angle)
-        draw.ellipse([dx - 5, dy - 5, dx + 5, dy + 5],
-                     fill=(255, 255, 255, 220))
+        draw.ellipse([dx - 5, dy - 5, dx + 5, dy + 5], fill=(255, 255, 255))
 
-    # --- book icon in the centre (always static) ---
+    # --- book icon in the centre ---
     bx, by = CX, CY
-    # book body
     draw.rounded_rectangle(
         [bx - 14, by - 16, bx + 14, by + 16],
-        radius=3, outline=(255, 255, 255, 240), width=2
+        radius=3, outline=(255, 255, 255), width=2
     )
-    # spine line
-    draw.line([bx, by - 16, bx, by + 16], fill=(255, 255, 255, 200), width=1)
-    # two page lines
-    draw.line([bx + 4, by - 8, bx + 11, by - 8], fill=(255, 255, 255, 180), width=1)
-    draw.line([bx + 4, by,     bx + 11, by],     fill=(255, 255, 255, 180), width=1)
-    draw.line([bx + 4, by + 8, bx + 11, by + 8], fill=(255, 255, 255, 180), width=1)
+    draw.line([bx, by - 16, bx, by + 16],         fill=(255, 255, 255), width=1)
+    draw.line([bx + 4, by - 8,  bx + 11, by - 8], fill=(220, 220, 255), width=1)
+    draw.line([bx + 4, by,      bx + 11, by],     fill=(220, 220, 255), width=1)
+    draw.line([bx + 4, by + 8,  bx + 11, by + 8], fill=(220, 220, 255), width=1)
 
     return np.array(img)
 
@@ -197,7 +197,7 @@ def make_animation_frame(t, total_duration):
 
 api_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY"))
 if not api_key:
-    st.error("GEMINI_API_KEY not found. Set it in Streamlit secrets or as an environment variable..")
+    st.error("GEMINI_API_KEY not found. Set it in Streamlit secrets or as an environment variable.")
     st.stop()
 
 client     = genai.Client(api_key=api_key)
