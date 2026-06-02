@@ -390,11 +390,6 @@ Educational Content:
             )
 
 
-            # PERFORMANCE: Using Pillow-based text rendering instead of
-            #   moviepy TextClip. TextClip shells out to ImageMagick for
-            #   EVERY frame, which is the #1 reason rendering took 8-9 min.
-            #   Pillow renders text once as a numpy array → ImageClip.
-
             # TITLE
             title_img = make_text_image(title_text, font_size=50, max_width=1100)
             title = ImageClip(title_img, transparent=True)
