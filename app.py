@@ -3,9 +3,11 @@ import json
 import os
 import glob
 import subprocess
-import math
-import numpy as np
+import requests
+from io import BytesIO
+from duckduckgo_search import DDGS
 from PIL import Image, ImageDraw, ImageFont
+import numpy as np
 from google import genai
 from gtts import gTTS
 from moviepy import *
@@ -64,7 +66,6 @@ def find_system_font():
         pass
     return None
 
-
 FONT_PATH = find_system_font()
 
 if FONT_PATH is None:
@@ -73,7 +74,6 @@ if FONT_PATH is None:
         "Please install fonts (e.g., `sudo apt install fonts-dejavu` on Linux)."
     )
     st.stop()
-
 
 # =========================================
 # HELPER: render text → RGBA numpy array
@@ -111,85 +111,28 @@ def make_text_image(text, font_size, color=(255, 255, 255),
         y += line_height
     return np.array(img)
 
-
 # =========================================
-# HELPER: pure-Python animated decoration
-#
-#  Draws a 200×200 frame for a given time t:
-#  • Outer slowly-spinning hexagon ring  (accent colour)
-#  • Three orbiting dots                 (white)
-#  • Central glowing circle             (pulsing blue-white)
-#  • Small "book" icon drawn with lines  (always visible)
-#
-#  Returns RGBA numpy array (200, 200, 4)
+# HELPER: Fetch Web Image for Topic
 # =========================================
 
-def make_animation_frame(t, total_duration):
-    SIZE  = 200
-    CX    = SIZE // 2   # 100
-    CY    = SIZE // 2   # 100
-
-    # RGB (not RGBA) — moviepy VideoClip requires 3-channel frames.
-    # Use the same dark navy as the video background so it blends seamlessly.
-    img  = Image.new("RGB", (SIZE, SIZE), (20, 20, 40))
-    draw = ImageDraw.Draw(img)
-
-    # --- pulsing glow: radius oscillates between 28 and 38 ---
-    pulse = 28 + 10 * (0.5 + 0.5 * math.sin(2 * math.pi * t / 1.4))
-    r = int(pulse)
-    # soft outer halo (blend into background by mixing toward navy)
-    for halo in range(6, 0, -1):
-        blend = halo / 6.0
-        hr    = r + halo * 3
-        halo_color = (
-            int(20 + blend * 60),
-            int(20 + blend * 120),
-            int(40 + blend * 215),
-        )
-        draw.ellipse([CX - hr, CY - hr, CX + hr, CY + hr], fill=halo_color)
-    # solid centre circle
-    draw.ellipse(
-        [CX - r, CY - r, CX + r, CY + r],
-        fill=(120, 180, 255)
-    )
-
-    # --- spinning hexagon ring ---
-    hex_r    = 72
-    hex_rot  = (2 * math.pi * t / 6.0)
-    hex_pts  = []
-    for k in range(6):
-        angle = hex_rot + k * math.pi / 3
-        hex_pts.append((
-            CX + hex_r * math.cos(angle),
-            CY + hex_r * math.sin(angle)
-        ))
-    for k in range(6):
-        x1, y1 = hex_pts[k]
-        x2, y2 = hex_pts[(k + 1) % 6]
-        draw.line([x1, y1, x2, y2], fill=(100, 160, 255), width=2)
-
-    # --- three orbiting dots ---
-    dot_r     = 58
-    dot_speed = 2 * math.pi * t / 2.5
-    for k in range(3):
-        angle = dot_speed + k * 2 * math.pi / 3
-        dx    = CX + dot_r * math.cos(angle)
-        dy    = CY + dot_r * math.sin(angle)
-        draw.ellipse([dx - 5, dy - 5, dx + 5, dy + 5], fill=(255, 255, 255))
-
-    # --- book icon in the centre ---
-    bx, by = CX, CY
-    draw.rounded_rectangle(
-        [bx - 14, by - 16, bx + 14, by + 16],
-        radius=3, outline=(255, 255, 255), width=2
-    )
-    draw.line([bx, by - 16, bx, by + 16],         fill=(255, 255, 255), width=1)
-    draw.line([bx + 4, by - 8,  bx + 11, by - 8], fill=(220, 220, 255), width=1)
-    draw.line([bx + 4, by,      bx + 11, by],     fill=(220, 220, 255), width=1)
-    draw.line([bx + 4, by + 8,  bx + 11, by + 8], fill=(220, 220, 255), width=1)
-
-    return np.array(img)
-
+def fetch_image_for_title(query):
+    """Fetches the first image result from DuckDuckGo and returns an RGB numpy array."""
+    try:
+        results = DDGS().images(query, max_results=1)
+        if results:
+            img_url = results[0]['image']
+            response = requests.get(img_url, timeout=10)
+            if response.status_code == 200:
+                img = Image.open(BytesIO(response.content)).convert("RGB")
+                # Resize proportionally to fit nicely on the right side of the video
+                img.thumbnail((350, 350), Image.Resampling.LANCZOS)
+                return np.array(img)
+    except Exception as e:
+        print(f"Failed to fetch image for '{query}': {e}")
+        
+    # Fallback to a plain dark box if the search or download fails
+    fallback_img = Image.new("RGB", (300, 200), (40, 40, 60))
+    return np.array(fallback_img)
 
 # =========================================
 # GEMINI SETUP
@@ -324,7 +267,7 @@ Educational Content:
             tts.save("voice.mp3")
 
         # --- RENDER VIDEO ---
-        with st.spinner("Rendering AI video..."):
+        with st.spinner("Rendering AI video (fetching context image)..."):
 
             audio          = AudioFileClip("voice.mp3")
             video_duration = audio.duration
@@ -333,37 +276,29 @@ Educational Content:
             background = ColorClip(size=(1280, 720), color=(20, 20, 40),
                                    duration=video_duration)
 
-            # ── Title  (font 38, y=28 — well above divider at y=108) ────────
+            # ── Title  (font 38, y=35) ──────────────────────────────────────
             title_img = make_text_image(title_text, font_size=38, max_width=1180,
                                         color=(255, 255, 255))
             title_clip = ImageClip(title_img, transparent=True)
-            title_clip = title_clip.with_position(("center", 28))
+            title_clip = title_clip.with_position(("center", 35))
             title_clip = title_clip.with_duration(video_duration)
 
-            # ── Divider line (y=108, clearly below title) ───────────────────
-            div_img = Image.new("RGBA", (1180, 3), (100, 100, 200, 200))
+            # ── Adjusted Divider line (Centered, y=120, slightly thicker) ───
+            div_img = Image.new("RGBA", (1200, 4), (100, 100, 200, 255))
             divider = ImageClip(np.array(div_img), transparent=True)
-            divider = divider.with_position((50, 108))
+            divider = divider.with_position(("center", 120))
             divider = divider.with_duration(video_duration)
 
-            # ── Bullets  (left column x=90, max_width=760) ──────────────────
-            #   Layout (1280×720):
-            #     Title          y=28–100
-            #     Divider        y=108
-            #     Bullet 1       y=130
-            #     Bullet 2       y=270
-            #     Bullet 3       y=410
-            #     Summary        y=555
-            #     Animation      bottom-right: x=1050, y=490  (200×200)
+            # ── Bullets  (left column x=90, max_width=720) ──────────────────
             bullet_clips     = []
-            bullet_y         = [130, 270, 410]
+            bullet_y         = [150, 290, 430]
             bullet_starts    = [0.10, 0.30, 0.50]
             bullet_durations = [0.90, 0.70, 0.50]
 
             for idx in range(min(3, len(bullets))):
                 b_img = make_text_image(
                     "• " + bullets[idx],
-                    font_size=22, max_width=760, color=(220, 220, 255)
+                    font_size=22, max_width=720, color=(220, 220, 255)
                 )
                 bc = ImageClip(b_img, transparent=True)
                 bc = bc.with_position((90, bullet_y[idx]))
@@ -372,39 +307,28 @@ Educational Content:
                 bc = bc.with_effects([vfx.FadeIn(0.8)])
                 bullet_clips.append(bc)
 
-            # ── Summary  (y=555, fades in at 80%) ───────────────────────────
+            # ── Summary  (y=575, fades in at 80%) ───────────────────────────
             summary_display = "Summary:\n" + "\n".join(
                 f"  {i+1}. {s}" for i, s in enumerate(summary)
             )
             s_img = make_text_image(summary_display, font_size=18,
                                     max_width=900, color=(180, 255, 180))
             summary_clip = ImageClip(s_img, transparent=True)
-            summary_clip = summary_clip.with_position((90, 555))
+            summary_clip = summary_clip.with_position((90, 575))
             summary_clip = summary_clip.with_start(video_duration * 0.80)
             summary_clip = summary_clip.with_duration(video_duration * 0.20)
             summary_clip = summary_clip.with_effects([vfx.FadeIn(0.5)])
 
-            # ── Pure-Python animation  ───────────────────────────────────────
-            #   Position: bottom-right corner, x=1050, y=490
-            #   Size: 200×200
-            #   Visible: from 15% of video to end (so it's always on screen)
-            #   Built entirely with Pillow — NO external API, NO errors
-            ANIM_X     = 1050
-            ANIM_Y     = 490
-            anim_start = video_duration * 0.15
-            anim_dur   = video_duration * 0.85   # 15% → 100%
-
-            def animation_make_frame(t):
-                """Return a 200×200 RGBA numpy array for time t."""
-                return make_animation_frame(t, anim_dur)
-
-            anim_clip = VideoClip(animation_make_frame, duration=anim_dur)
-            anim_clip = anim_clip.with_position((ANIM_X, ANIM_Y))
-            anim_clip = anim_clip.with_start(anim_start)
-            anim_clip = anim_clip.with_effects([vfx.FadeIn(1.0)])
+            # ── Fetched Web Image (Placed on the right side) ────────────────
+            web_img_array = fetch_image_for_title(title_text)
+            img_clip = ImageClip(web_img_array)
+            img_clip = img_clip.with_position((860, 200)) # Right side of the screen
+            img_clip = img_clip.with_start(video_duration * 0.15)
+            img_clip = img_clip.with_duration(video_duration * 0.85)
+            img_clip = img_clip.with_effects([vfx.FadeIn(1.0)])
 
             # ── Compose ──────────────────────────────────────────────────────
-            all_clips  = [background, title_clip, divider] + bullet_clips + [summary_clip, anim_clip]
+            all_clips  = [background, title_clip, divider] + bullet_clips + [summary_clip, img_clip]
             final      = CompositeVideoClip(all_clips)
             final      = final.with_duration(video_duration)
             final      = final.with_audio(audio)
