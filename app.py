@@ -320,41 +320,48 @@ Educational Content:
         if image_prompt:
             with st.spinner("Generating AI illustration..."):
                 try:
-                    img_response = client.models.generate_images(
-                        model='imagen-3.0-generate-001',
-                        prompt=image_prompt,
-                        config=types.GenerateImagesConfig(
-                            number_of_images=1,
+                    # Use Gemini's native image generation via generate_content
+                    # (works with standard API keys, unlike Imagen)
+                    img_response = client.models.generate_content(
+                        model="gemini-2.0-flash-exp-image-generation",
+                        contents=image_prompt,
+                        config=types.GenerateContentConfig(
+                            response_modalities=["IMAGE"],
                         )
                     )
 
-                    if img_response.generated_images:
-                        gen_img = img_response.generated_images[0]
-                        # The SDK returns a PIL Image via .image
-                        pil_img = gen_img.image
-                        if pil_img is None and hasattr(gen_img, 'image_bytes'):
-                            pil_img = Image.open(BytesIO(gen_img.image_bytes))
+                    # Extract the image from the response parts
+                    pil_img = None
+                    if (img_response.candidates
+                            and img_response.candidates[0].content
+                            and img_response.candidates[0].content.parts):
+                        for part in img_response.candidates[0].content.parts:
+                            if part.inline_data:
+                                pil_img = Image.open(
+                                    BytesIO(part.inline_data.data)
+                                )
+                                break
 
-                        if pil_img is not None:
-                            # Resize to fit the video layout (right side)
-                            pil_img = pil_img.convert("RGBA")
-                            pil_img.thumbnail((350, 350), Image.LANCZOS)
+                    if pil_img is not None:
+                        # Resize to fit the video layout (right side)
+                        pil_img = pil_img.convert("RGBA")
+                        pil_img.thumbnail((350, 350), Image.LANCZOS)
 
-                            # Add rounded corners for a polished look
-                            w, h = pil_img.size
-                            corner_radius = 20
-                            mask = Image.new("L", (w, h), 0)
-                            mask_draw = ImageDraw.Draw(mask)
-                            mask_draw.rounded_rectangle(
-                                [(0, 0), (w, h)],
-                                radius=corner_radius,
-                                fill=255
-                            )
-                            pil_img.putalpha(mask)
+                        # Add rounded corners for a polished look
+                        w, h = pil_img.size
+                        corner_radius = 20
+                        mask = Image.new("L", (w, h), 0)
+                        mask_draw = ImageDraw.Draw(mask)
+                        mask_draw.rounded_rectangle(
+                            [(0, 0), (w, h)],
+                            radius=corner_radius,
+                            fill=255
+                        )
+                        pil_img.putalpha(mask)
 
-                            pil_img.save("ai_illustration.png")
-                            generated_image_path = "ai_illustration.png"
-                            st.success("AI illustration generated!")
+                        pil_img.save("ai_illustration.png")
+                        generated_image_path = "ai_illustration.png"
+                        st.success("AI illustration generated!")
 
                 except Exception as e:
                     st.warning(
@@ -405,7 +412,7 @@ Educational Content:
             for idx in range(min(3, len(bullets))):
                 bullet_text = "• " + bullets[idx]
                 bullet_img = make_text_image(
-                    bullet_text, font_size=28, max_width=1000
+                    bullet_text, font_size=15, max_width=1000
                 )
                 clip = ImageClip(bullet_img, transparent=True)
                 clip = clip.with_position((90, bullet_positions[idx]))
@@ -419,7 +426,7 @@ Educational Content:
             # SUMMARY TEXT
             summary_display = "Summary:\n" + "\n".join(summary)
             summary_img = make_text_image(
-                summary_display, font_size=24, max_width=1000
+                summary_display, font_size=15, max_width=1000
             )
             summary_text = ImageClip(summary_img, transparent=True)
             summary_text = summary_text.with_position((90, 550))
