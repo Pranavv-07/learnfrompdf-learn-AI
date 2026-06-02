@@ -187,7 +187,6 @@ if uploaded_file:
         # =========================================
 
         with st.spinner("Reading PDF..."):
-
             reader = PdfReader("uploaded.pdf")
             content = ""
             for page in reader.pages:
@@ -279,13 +278,13 @@ Educational Content:
         # EXTRACT DATA
         # =========================================
 
-        title_text   = data.get("title", "Untitled Lesson")
-        bullets      = data.get("bullets", [])
-        narration    = data.get("narration", "")
-        summary      = data.get("summary", [])
+        title_text        = data.get("title", "Untitled Lesson")
+        bullets           = data.get("bullets", [])
+        narration         = data.get("narration", "")
+        summary           = data.get("summary", [])
         summary_narration = data.get("summary_narration", "")
-        quiz         = data.get("quiz", [])
-        image_prompt = data.get("image_prompt", "")
+        quiz              = data.get("quiz", [])
+        image_prompt      = data.get("image_prompt", "")
 
         # =========================================
         # DISPLAY GENERATED CONTENT
@@ -296,7 +295,10 @@ Educational Content:
         st.write(title_text)
 
         # =========================================
-        # GENERATE AI IMAGE  ← FIXED
+        # GENERATE AI IMAGE
+        # FIX: correct model  →  gemini-3.1-flash-image-preview
+        #      no response_modalities needed
+        #      check part.inline_data directly (not inline_data.data attribute)
         # =========================================
 
         generated_image_path = None
@@ -304,14 +306,10 @@ Educational Content:
         if image_prompt:
             with st.spinner("Generating AI illustration..."):
                 try:
-                    # FIX 1: correct model name
                     img_response = client.models.generate_content(
-                        model="gemini-2.0-flash-preview-image-generation",
+                        model="gemini-3.1-flash-image-preview",   # ← FIXED model
                         contents=image_prompt,
-                        config=types.GenerateContentConfig(
-                            # FIX 2: TEXT must be listed alongside IMAGE
-                            response_modalities=["IMAGE", "TEXT"],
-                        )
+                        # No response_modalities config needed for this model
                     )
 
                     pil_img = None
@@ -319,8 +317,7 @@ Educational Content:
                             and img_response.candidates[0].content
                             and img_response.candidates[0].content.parts):
                         for part in img_response.candidates[0].content.parts:
-                            # FIX 3: safer attribute check
-                            if hasattr(part, "inline_data") and part.inline_data:
+                            if hasattr(part, "inline_data") and part.inline_data is not None:
                                 pil_img = Image.open(
                                     BytesIO(part.inline_data.data)
                                 )
@@ -329,8 +326,7 @@ Educational Content:
                     if pil_img is not None:
                         pil_img = pil_img.convert("RGBA")
 
-                        # FIX 4: constrain to 200×200 so it sits safely in
-                        # the bottom-right corner without overlapping content
+                        # Constrain to 200×200 — fits safely in bottom-right corner
                         pil_img.thumbnail((200, 200), Image.LANCZOS)
 
                         # Rounded corners
@@ -377,17 +373,19 @@ Educational Content:
             # VIDEO LAYOUT  (1280 × 720)
             #
             #  ┌──────────────────────────────────────────────┐
-            #  │            TITLE  (y ≈ 80)                   │
+            #  │            TITLE  (y = 30)                   │
+            #  │          ─────────────── (divider y=115)     │
             #  ├──────────────────────────────────────────────┤
-            #  │  • Bullet 1  (y = 220)                       │
-            #  │  • Bullet 2  (y = 320)                       │
+            #  │  • Bullet 1  (y = 175)                       │
+            #  │  • Bullet 2  (y = 300)   [max_width=760]     │
             #  │  • Bullet 3  (y = 420)                       │
             #  ├──────────────────────────────────────────────┤
-            #  │  Summary     (y = 540)                       │
-            #  ├─────────────────────────────┬────────────────┤
-            #  │                             │  AI IMAGE      │
-            #  │                             │  (bottom-right)│
-            #  └─────────────────────────────┴────────────────┘
+            #  │  📌 Summary  (y = 555)                       │
+            #  ├────────────────────────────┬─────────────────┤
+            #  │                            │  AI IMAGE       │
+            #  │                            │  bottom-right   │
+            #  │                            │  x=1050, y=490  │
+            #  └────────────────────────────┴─────────────────┘
             # --------------------------------------------------
 
             background = ColorClip(
@@ -396,32 +394,31 @@ Educational Content:
                 duration=video_duration
             )
 
-            # TITLE
-            title_img = make_text_image(title_text, font_size=45, max_width=1100)
+            # FIX 1: title font_size reduced from 45 → 40
+            #         and moved up to y=30 so divider at y=115 no longer clips it
+            title_img = make_text_image(title_text, font_size=40, max_width=1180)
             title = ImageClip(title_img, transparent=True)
-            title = title.with_position(("center", 40))
+            title = title.with_position(("center", 30))
             title = title.with_duration(video_duration)
 
-            # Thin horizontal divider line under title
+            # Thin horizontal divider — sits clearly BELOW title text
             divider_img = Image.new("RGBA", (1180, 3), (100, 100, 180, 200))
             divider = ImageClip(np.array(divider_img), transparent=True)
-            divider = divider.with_position((50, 135))
+            divider = divider.with_position((50, 115))
             divider = divider.with_duration(video_duration)
 
-            # BULLET CLIPS
-            # Bullets sit on the LEFT column (x=90, max_width=760)
-            # leaving the right 420 px free for the illustration
+            # BULLET CLIPS  (left column only, max_width=760)
             bullet_clips = []
-            bullet_y_positions  = [175, 300, 420]   # well-spaced rows
-            bullet_start_fracs  = [0.10, 0.30, 0.50]
-            bullet_dur_fracs    = [0.90, 0.70, 0.50]
+            bullet_y_positions = [155, 290, 420]
+            bullet_start_fracs = [0.10, 0.30, 0.50]
+            bullet_dur_fracs   = [0.90, 0.70, 0.50]
 
             for idx in range(min(3, len(bullets))):
                 bullet_text = "• " + bullets[idx]
                 bullet_img  = make_text_image(
                     bullet_text,
                     font_size=22,
-                    max_width=760,          # constrained to left column
+                    max_width=760,
                     color=(220, 220, 255)
                 )
                 clip = ImageClip(bullet_img, transparent=True)
@@ -431,8 +428,8 @@ Educational Content:
                 clip = clip.with_effects([vfx.FadeIn(0.8)])
                 bullet_clips.append(clip)
 
-            # SUMMARY TEXT  (y = 560, left column only)
-            summary_display = "📌 Summary:\n" + "\n".join(
+            # SUMMARY TEXT  (left column, y=555)
+            summary_display = "Summary:\n" + "\n".join(
                 f"  {i+1}. {s}" for i, s in enumerate(summary)
             )
             summary_img = make_text_image(
@@ -448,23 +445,24 @@ Educational Content:
             summary_text = summary_text.with_effects([vfx.FadeIn(0.5)])
 
             # -------------------------------------------------------
-            # AI ILLUSTRATION  ← FIXED position & timing
+            # AI ILLUSTRATION — bottom-right corner, no overlap
             #
-            # Max size : 200 × 200 px
-            # Position : bottom-right corner with 30 px margin
-            #            x = 1280 - img_w - 30
-            #            y =  720 - img_h - 30
-            # Visible  : 25 % → 75 % of video duration
-            #            (bullets animate in at 10–50 %; summary at 80 %)
-            #            so the image never overlaps either.
+            # Safe zone for image:
+            #   Right side x > 860 (bullets end at x~850 max)
+            #   Bottom    y > 480 (bullets end ~y 420+lineheight)
+            #   Image max 200×200, placed at bottom-right with 30px margin
+            #     x = 1280 - img_w - 30
+            #     y = 720  - img_h - 30
+            #
+            # Visible window: 25% → 75% (bullets animate 10-50%; summary at 80%)
             # -------------------------------------------------------
             illustration_clip = None
             if generated_image_path and os.path.exists(generated_image_path):
                 ai_img = Image.open(generated_image_path).convert("RGBA")
-                img_w, img_h = ai_img.size          # at most 200 × 200
+                img_w, img_h = ai_img.size   # at most 200 × 200
 
-                x_pos = 1280 - img_w - 30           # right-aligned, 30 px margin
-                y_pos = 720  - img_h - 30           # bottom-aligned, 30 px margin
+                x_pos = 1280 - img_w - 30    # right-aligned with 30px margin
+                y_pos = 720  - img_h - 30    # bottom-aligned with 30px margin
 
                 illustration_clip = ImageClip(
                     np.array(ai_img), transparent=True
@@ -474,7 +472,7 @@ Educational Content:
                     video_duration * 0.25
                 )
                 illustration_clip = illustration_clip.with_duration(
-                    video_duration * 0.50          # visible 25 % → 75 %
+                    video_duration * 0.50    # visible from 25% → 75%
                 )
                 illustration_clip = illustration_clip.with_effects(
                     [vfx.FadeIn(1.0)]
@@ -582,11 +580,11 @@ if st.session_state.generated and st.session_state.data is not None:
                 results = []
 
                 for i, q in enumerate(quiz):
-                    correct_answer = q["answer"]
-                    user_ans       = user_answers[i]
-                    options        = q.get("options", [])
+                    correct_answer   = q["answer"]
+                    user_ans         = user_answers[i]
+                    options          = q.get("options", [])
 
-                    is_correct      = False
+                    is_correct       = False
                     resolved_correct = correct_answer
 
                     # Exact match
