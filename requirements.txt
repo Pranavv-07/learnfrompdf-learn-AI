@@ -4,3 +4,4 @@ google-auth
 gTTS
 moviepy
 pypdf
+duckduckgo-search requests
