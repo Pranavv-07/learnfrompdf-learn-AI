@@ -4,8 +4,10 @@ import os
 import glob
 import subprocess
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from google import genai
+from google.genai import types
 from gtts import gTTS
 from moviepy import *
 from pypdf import PdfReader
@@ -231,13 +233,13 @@ The JSON must follow this exact structure:
     "point 1",
     "point 2",
     "point 3"
-    "image_url": "https://example.com/image.png"  
   ],
   "summary": [
     "summary point 1",
     "summary point 2",
     "summary point 3"
   ],
+  "image_prompt": "A short, vivid description (1-2 sentences) of an educational illustration that visually represents the main concept of this lesson. Describe a clean, modern, flat-style illustration suitable for a teaching video. Do NOT include any text in the image description.",
   "narration": "A detailed explanation of the topic in an university professor style, within 45 seconds when spoken. Use proper punctuation, natural pauses, and paragraph breaks so the speech sounds clear. The tone should be  English, friendly, slightly informal, and student-friendly. Do NOT simply read the bullet points — give an engaging explanation of the concepts.",
   "summary_narration": "A quick 10-second revision summary of the key points.",
   "quiz": [
@@ -299,6 +301,7 @@ Educational Content:
         summary = data.get("summary", [])
         summary_narration = data.get("summary_narration", "")
         quiz = data.get("quiz", [])
+        image_prompt = data.get("image_prompt", "")
 
         # =========================================
         # DISPLAY GENERATED CONTENT
@@ -307,6 +310,56 @@ Educational Content:
         st.subheader("Generated Lesson")
         st.write("### Title")
         st.write(title_text)
+
+        # =========================================
+        # GENERATE AI IMAGE
+        # =========================================
+
+        generated_image_path = None
+
+        if image_prompt:
+            with st.spinner("Generating AI illustration..."):
+                try:
+                    img_response = client.models.generate_images(
+                        model='imagen-3.0-generate-001',
+                        prompt=image_prompt,
+                        config=types.GenerateImagesConfig(
+                            number_of_images=1,
+                        )
+                    )
+
+                    if img_response.generated_images:
+                        gen_img = img_response.generated_images[0]
+                        # The SDK returns a PIL Image via .image
+                        pil_img = gen_img.image
+                        if pil_img is None and hasattr(gen_img, 'image_bytes'):
+                            pil_img = Image.open(BytesIO(gen_img.image_bytes))
+
+                        if pil_img is not None:
+                            # Resize to fit the video layout (right side)
+                            pil_img = pil_img.convert("RGBA")
+                            pil_img.thumbnail((350, 350), Image.LANCZOS)
+
+                            # Add rounded corners for a polished look
+                            w, h = pil_img.size
+                            corner_radius = 20
+                            mask = Image.new("L", (w, h), 0)
+                            mask_draw = ImageDraw.Draw(mask)
+                            mask_draw.rounded_rectangle(
+                                [(0, 0), (w, h)],
+                                radius=corner_radius,
+                                fill=255
+                            )
+                            pil_img.putalpha(mask)
+
+                            pil_img.save("ai_illustration.png")
+                            generated_image_path = "ai_illustration.png"
+                            st.success("AI illustration generated!")
+
+                except Exception as e:
+                    st.warning(
+                        f"Could not generate AI image (will continue without it): {e}"
+                    )
 
         # =========================================
         # GENERATE VOICE
@@ -377,18 +430,32 @@ Educational Content:
             summary_text = summary_text.with_position((90, 550))
             summary_text = summary_text.with_start(video_duration * 0.80)
             summary_text = summary_text.with_duration(video_duration * 0.20)
-            image = Image.open("example.png").convert("RGBA")
-            image_clip = ImageClip(np.array(image), transparent=True)
-            image_clip = image_clip.with_position((900, 400))
-            image_clip = image_clip.with_start(video_duration * 0.50)
-            image_clip = image_clip.with_duration(video_duration * 0.50)   
-            
+
+            # AI-GENERATED ILLUSTRATION (right side of video)
+            illustration_clip = None
+            if generated_image_path and os.path.exists(generated_image_path):
+                ai_img = Image.open(generated_image_path).convert("RGBA")
+                illustration_clip = ImageClip(
+                    np.array(ai_img), transparent=True
+                )
+                illustration_clip = illustration_clip.with_position((860, 280))
+                illustration_clip = illustration_clip.with_start(
+                    video_duration * 0.20
+                )
+                illustration_clip = illustration_clip.with_duration(
+                    video_duration * 0.60
+                )
+                illustration_clip = illustration_clip.with_effects(
+                    [vfx.FadeIn(1.0)]
+                )
 
             # =========================================
             # COMBINE VIDEO
             # =========================================
 
             all_clips = [background, title] + bullet_clips + [summary_text]
+            if illustration_clip is not None:
+                all_clips.append(illustration_clip)
 
             final_video = CompositeVideoClip(all_clips)
             final_video = final_video.with_duration(audio.duration)
