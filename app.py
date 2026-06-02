@@ -32,17 +32,15 @@ st.write("Upload a PDF and generate an AI teaching video.")
 @st.cache_resource
 def find_system_font():
     """Find a usable TrueType font on the system."""
-    # Common font search paths by OS
     search_dirs = [
-        "/System/Library/Fonts",          # macOS system fonts
-        "/Library/Fonts",                 # macOS user-installed fonts
-        os.path.expanduser("~/Library/Fonts"),  # macOS per-user fonts
-        "/usr/share/fonts",               # Linux
-        "/usr/local/share/fonts",         # Linux local
-        "C:\\Windows\\Fonts",             # Windows
+        "/System/Library/Fonts",
+        "/Library/Fonts",
+        os.path.expanduser("~/Library/Fonts"),
+        "/usr/share/fonts",
+        "/usr/local/share/fonts",
+        "C:\\Windows\\Fonts",
     ]
 
-    # Preferred fonts (clean, readable sans-serif)
     preferred = [
         "Arial.ttf", "Helvetica.ttf", "DejaVuSans.ttf",
         "LiberationSans-Regular.ttf", "FreeSans.ttf",
@@ -50,7 +48,6 @@ def find_system_font():
         "Arial Unicode.ttf",
     ]
 
-    # First, try to find a preferred font
     for search_dir in search_dirs:
         if not os.path.isdir(search_dir):
             continue
@@ -61,7 +58,6 @@ def find_system_font():
             if matches:
                 return matches[0]
 
-    # Fallback: find ANY .ttf file
     for search_dir in search_dirs:
         if not os.path.isdir(search_dir):
             continue
@@ -71,7 +67,6 @@ def find_system_font():
         if matches:
             return matches[0]
 
-    # Last resort: try fc-list (Linux/macOS with fontconfig)
     try:
         result = subprocess.run(
             ["fc-list", "--format", "%{file}\n"],
@@ -102,12 +97,9 @@ def make_text_image(text, font_size, color=(255, 255, 255),
                     max_width=1100, padding=(20, 10)):
     """
     Render text to a transparent RGBA numpy array using Pillow.
-    This is 10-50x FASTER than moviepy's TextClip which shells out
-    to ImageMagick for every single frame.
     """
     font = ImageFont.truetype(FONT_PATH, font_size)
 
-    # Word-wrap the text to fit within max_width
     lines = []
     for paragraph in text.split("\n"):
         words = paragraph.split()
@@ -125,12 +117,10 @@ def make_text_image(text, font_size, color=(255, 255, 255),
                 current_line = word
         lines.append(current_line)
 
-    # Calculate image dimensions
     line_height = font_size + 6
     img_width = max_width
     img_height = len(lines) * line_height + 2 * padding[1]
 
-    # Draw text on a transparent image
     img = Image.new("RGBA", (img_width, img_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     y = padding[1]
@@ -139,6 +129,7 @@ def make_text_image(text, font_size, color=(255, 255, 255),
         y += line_height
 
     return np.array(img)
+
 
 # =========================================
 # GEMINI SETUP
@@ -156,7 +147,6 @@ MODEL_NAME = "gemini-2.5-flash"
 # =========================================
 # INITIALIZE SESSION STATE
 # =========================================
-
 
 if "generated" not in st.session_state:
     st.session_state.generated = False
@@ -180,7 +170,6 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file:
 
-    # SAVE PDF
     with open("uploaded.pdf", "wb") as f:
         f.write(uploaded_file.read())
 
@@ -200,26 +189,22 @@ if uploaded_file:
         with st.spinner("Reading PDF..."):
 
             reader = PdfReader("uploaded.pdf")
-
             content = ""
-
             for page in reader.pages:
                 text = page.extract_text()
                 if text:
                     content += text
 
-        # LIMIT CONTENT SIZE
         content = content[:8000]
 
         # =========================================
         # GEMINI PROMPT
         # =========================================
 
-
         prompt = f"""
 You are an AI educational teacher.
 
-Analyze the educational content below. And generate the summary of the document, incase it consists of multiple topics, then generate the summary for each topic separately. as three points and incase there are any questions in the document then generate answers for them, incase it is a question bank just gnerate the summary of the all the questions as a group in those three points.Based on the type of document you analyze it and generate the required output. if it is a coding question explain the approach and one example testcase with output, if it is a theoretical question then explain the concept in detail and give one example, if it is a question bank then give the summary of all the questions in three points. understand the document and generate the output accordingly.
+Analyze the educational content below. And generate the summary of the document, incase it consists of multiple topics, then generate the summary for each topic separately. as three points and incase there are any questions in the document then generate answers for them, incase it is a question bank just generate the summary of the all the questions as a group in those three points. Based on the type of document you analyze it and generate the required output. if it is a coding question explain the approach and one example testcase with output, if it is a theoretical question then explain the concept in detail and give one example, if it is a question bank then give the summary of all the questions in three points. understand the document and generate the output accordingly.
 
 Return ONLY valid JSON — no markdown, no explanation, no extra text.
 
@@ -240,7 +225,7 @@ The JSON must follow this exact structure:
     "summary point 3"
   ],
   "image_prompt": "A short, vivid description (1-2 sentences) of an educational illustration that visually represents the main concept of this lesson. Describe a clean, modern, flat-style illustration suitable for a teaching video. Do NOT include any text in the image description.",
-  "narration": "A detailed explanation of the topic in an university professor style, within 45 seconds when spoken. Use proper punctuation, natural pauses, and paragraph breaks so the speech sounds clear. The tone should be  English, friendly, slightly informal, and student-friendly. Do NOT simply read the bullet points — give an engaging explanation of the concepts.",
+  "narration": "A detailed explanation of the topic in an university professor style, within 45 seconds when spoken. Use proper punctuation, natural pauses, and paragraph breaks so the speech sounds clear. The tone should be English, friendly, slightly informal, and student-friendly. Do NOT simply read the bullet points — give an engaging explanation of the concepts.",
   "summary_narration": "A quick 10-second revision summary of the key points.",
   "quiz": [
     {{
@@ -275,7 +260,6 @@ Educational Content:
             )
 
             clean_text = response.text.strip()
-            # Remove markdown code fences if present
             if clean_text.startswith("```json"):
                 clean_text = clean_text[7:]
             elif clean_text.startswith("```"):
@@ -295,12 +279,12 @@ Educational Content:
         # EXTRACT DATA
         # =========================================
 
-        title_text = data.get("title", "Untitled Lesson")
-        bullets = data.get("bullets", [])
-        narration = data.get("narration", "")
-        summary = data.get("summary", [])
+        title_text   = data.get("title", "Untitled Lesson")
+        bullets      = data.get("bullets", [])
+        narration    = data.get("narration", "")
+        summary      = data.get("summary", [])
         summary_narration = data.get("summary_narration", "")
-        quiz = data.get("quiz", [])
+        quiz         = data.get("quiz", [])
         image_prompt = data.get("image_prompt", "")
 
         # =========================================
@@ -312,7 +296,7 @@ Educational Content:
         st.write(title_text)
 
         # =========================================
-        # GENERATE AI IMAGE
+        # GENERATE AI IMAGE  ← FIXED
         # =========================================
 
         generated_image_path = None
@@ -320,36 +304,38 @@ Educational Content:
         if image_prompt:
             with st.spinner("Generating AI illustration..."):
                 try:
-                    # Use Gemini's native image generation via generate_content
-                    # (works with standard API keys, unlike Imagen)
+                    # FIX 1: correct model name
                     img_response = client.models.generate_content(
-                        model="gemini-2.0-flash-exp-image-generation",
+                        model="gemini-2.0-flash-preview-image-generation",
                         contents=image_prompt,
                         config=types.GenerateContentConfig(
-                            response_modalities=["IMAGE"],
+                            # FIX 2: TEXT must be listed alongside IMAGE
+                            response_modalities=["IMAGE", "TEXT"],
                         )
                     )
 
-                    # Extract the image from the response parts
                     pil_img = None
                     if (img_response.candidates
                             and img_response.candidates[0].content
                             and img_response.candidates[0].content.parts):
                         for part in img_response.candidates[0].content.parts:
-                            if part.inline_data:
+                            # FIX 3: safer attribute check
+                            if hasattr(part, "inline_data") and part.inline_data:
                                 pil_img = Image.open(
                                     BytesIO(part.inline_data.data)
                                 )
                                 break
 
                     if pil_img is not None:
-                        # Resize to fit the video layout (right side)
                         pil_img = pil_img.convert("RGBA")
-                        pil_img.thumbnail((350, 350), Image.LANCZOS)
 
-                        # Add rounded corners for a polished look
+                        # FIX 4: constrain to 200×200 so it sits safely in
+                        # the bottom-right corner without overlapping content
+                        pil_img.thumbnail((200, 200), Image.LANCZOS)
+
+                        # Rounded corners
                         w, h = pil_img.size
-                        corner_radius = 20
+                        corner_radius = 15
                         mask = Image.new("L", (w, h), 0)
                         mask_draw = ImageDraw.Draw(mask)
                         mask_draw.rounded_rectangle(
@@ -362,6 +348,8 @@ Educational Content:
                         pil_img.save("ai_illustration.png")
                         generated_image_path = "ai_illustration.png"
                         st.success("AI illustration generated!")
+                    else:
+                        st.warning("Image generation returned no image data.")
 
                 except Exception as e:
                     st.warning(
@@ -373,12 +361,7 @@ Educational Content:
         # =========================================
 
         with st.spinner("Generating narration audio..."):
-
-            tts = gTTS(
-                text=narration,
-                lang='en',
-                slow=False
-            )
+            tts = gTTS(text=narration, lang='en', slow=False)
             tts.save("voice.mp3")
 
         # =========================================
@@ -390,62 +373,108 @@ Educational Content:
             audio = AudioFileClip("voice.mp3")
             video_duration = audio.duration
 
+            # --------------------------------------------------
+            # VIDEO LAYOUT  (1280 × 720)
+            #
+            #  ┌──────────────────────────────────────────────┐
+            #  │            TITLE  (y ≈ 80)                   │
+            #  ├──────────────────────────────────────────────┤
+            #  │  • Bullet 1  (y = 220)                       │
+            #  │  • Bullet 2  (y = 320)                       │
+            #  │  • Bullet 3  (y = 420)                       │
+            #  ├──────────────────────────────────────────────┤
+            #  │  Summary     (y = 540)                       │
+            #  ├─────────────────────────────┬────────────────┤
+            #  │                             │  AI IMAGE      │
+            #  │                             │  (bottom-right)│
+            #  └─────────────────────────────┴────────────────┘
+            # --------------------------------------------------
+
             background = ColorClip(
                 size=(1280, 720),
                 color=(20, 20, 40),
                 duration=video_duration
             )
 
-
             # TITLE
             title_img = make_text_image(title_text, font_size=45, max_width=1100)
             title = ImageClip(title_img, transparent=True)
-            title = title.with_position(("center", 80))
+            title = title.with_position(("center", 40))
             title = title.with_duration(video_duration)
 
+            # Thin horizontal divider line under title
+            divider_img = Image.new("RGBA", (1180, 3), (100, 100, 180, 200))
+            divider = ImageClip(np.array(divider_img), transparent=True)
+            divider = divider.with_position((50, 135))
+            divider = divider.with_duration(video_duration)
+
             # BULLET CLIPS
+            # Bullets sit on the LEFT column (x=90, max_width=760)
+            # leaving the right 420 px free for the illustration
             bullet_clips = []
-            bullet_positions = [250, 350, 450]
-            bullet_starts = [0.15, 0.35, 0.55]
-            bullet_durations_remaining = [0.85, 0.65, 0.45]
+            bullet_y_positions  = [175, 300, 420]   # well-spaced rows
+            bullet_start_fracs  = [0.10, 0.30, 0.50]
+            bullet_dur_fracs    = [0.90, 0.70, 0.50]
 
             for idx in range(min(3, len(bullets))):
                 bullet_text = "• " + bullets[idx]
-                bullet_img = make_text_image(
-                    bullet_text, font_size=15, max_width=1000
+                bullet_img  = make_text_image(
+                    bullet_text,
+                    font_size=22,
+                    max_width=760,          # constrained to left column
+                    color=(220, 220, 255)
                 )
                 clip = ImageClip(bullet_img, transparent=True)
-                clip = clip.with_position((90, bullet_positions[idx]))
-                clip = clip.with_start(video_duration * bullet_starts[idx])
-                clip = clip.with_duration(
-                    video_duration * bullet_durations_remaining[idx]
-                )
+                clip = clip.with_position((90, bullet_y_positions[idx]))
+                clip = clip.with_start(video_duration * bullet_start_fracs[idx])
+                clip = clip.with_duration(video_duration * bullet_dur_fracs[idx])
                 clip = clip.with_effects([vfx.FadeIn(0.8)])
                 bullet_clips.append(clip)
 
-            # SUMMARY TEXT
-            summary_display = "Summary:\n" + "\n".join(summary)
+            # SUMMARY TEXT  (y = 560, left column only)
+            summary_display = "📌 Summary:\n" + "\n".join(
+                f"  {i+1}. {s}" for i, s in enumerate(summary)
+            )
             summary_img = make_text_image(
-                summary_display, font_size=15, max_width=1000
+                summary_display,
+                font_size=18,
+                max_width=900,
+                color=(180, 255, 180)
             )
             summary_text = ImageClip(summary_img, transparent=True)
-            summary_text = summary_text.with_position((90, 550))
+            summary_text = summary_text.with_position((90, 555))
             summary_text = summary_text.with_start(video_duration * 0.80)
             summary_text = summary_text.with_duration(video_duration * 0.20)
+            summary_text = summary_text.with_effects([vfx.FadeIn(0.5)])
 
-            # AI-GENERATED ILLUSTRATION (right side of video)
+            # -------------------------------------------------------
+            # AI ILLUSTRATION  ← FIXED position & timing
+            #
+            # Max size : 200 × 200 px
+            # Position : bottom-right corner with 30 px margin
+            #            x = 1280 - img_w - 30
+            #            y =  720 - img_h - 30
+            # Visible  : 25 % → 75 % of video duration
+            #            (bullets animate in at 10–50 %; summary at 80 %)
+            #            so the image never overlaps either.
+            # -------------------------------------------------------
             illustration_clip = None
             if generated_image_path and os.path.exists(generated_image_path):
                 ai_img = Image.open(generated_image_path).convert("RGBA")
+                img_w, img_h = ai_img.size          # at most 200 × 200
+
+                x_pos = 1280 - img_w - 30           # right-aligned, 30 px margin
+                y_pos = 720  - img_h - 30           # bottom-aligned, 30 px margin
+
                 illustration_clip = ImageClip(
                     np.array(ai_img), transparent=True
                 )
-                illustration_clip = illustration_clip.with_position((860, 280))
+                illustration_clip = illustration_clip.with_position((x_pos, y_pos))
                 illustration_clip = illustration_clip.with_start(
-                    video_duration * 0.20
+                    video_duration * 0.25
                 )
                 illustration_clip = illustration_clip.with_duration(
-                    video_duration * 0.60
+                    video_duration * 0.50          # visible 25 % → 75 %
                 )
                 illustration_clip = illustration_clip.with_effects(
                     [vfx.FadeIn(1.0)]
@@ -455,7 +484,7 @@ Educational Content:
             # COMBINE VIDEO
             # =========================================
 
-            all_clips = [background, title] + bullet_clips + [summary_text]
+            all_clips = [background, title, divider] + bullet_clips + [summary_text]
             if illustration_clip is not None:
                 all_clips.append(illustration_clip)
 
@@ -470,21 +499,20 @@ Educational Content:
             output_path = "final_video.mp4"
             final_video.write_videofile(
                 output_path,
-                fps=10,              # 10 FPS is plenty for static slides
-                preset="ultrafast",  # Fastest H.264 encoding
-                threads=4,           # Multi-threaded encoding
-                logger=None,         # Suppress verbose logging in Streamlit
+                fps=10,
+                preset="ultrafast",
+                threads=4,
+                logger=None,
             )
 
-            # Close clips to free resources
             audio.close()
 
         # =========================================
         # SAVE TO SESSION STATE
         # =========================================
 
-        st.session_state.generated = True
-        st.session_state.data = data
+        st.session_state.generated  = True
+        st.session_state.data       = data
         st.session_state.video_path = output_path
 
         st.rerun()
@@ -493,14 +521,12 @@ Educational Content:
 # DISPLAY RESULTS (persisted via session state)
 # =========================================
 
-
-
 if st.session_state.generated and st.session_state.data is not None:
 
-    data = st.session_state.data
+    data       = st.session_state.data
     title_text = data.get("title", "Untitled Lesson")
-    bullets = data.get("bullets", [])
-    quiz = data.get("quiz", [])
+    bullets    = data.get("bullets", [])
+    quiz       = data.get("quiz", [])
 
     # =========================================
     # SHOW LESSON INFO
@@ -528,8 +554,6 @@ if st.session_state.generated and st.session_state.data is not None:
     if quiz:
         st.subheader("Knowledge Check")
 
-        # Collect answers using session_state keys so selections
-        # persist across reruns.
         user_answers = []
 
         for i, q in enumerate(quiz):
@@ -539,13 +563,12 @@ if st.session_state.generated and st.session_state.data is not None:
                 f"Choose your answer for Q{i + 1}:",
                 q["options"],
                 key=f"quiz_{i}",
-                index=None  # No default selection
+                index=None
             )
             user_answers.append(user_answer)
 
         if st.button("Submit Quiz"):
 
-            # Check if all questions are answered
             unanswered = [
                 i + 1 for i, ans in enumerate(user_answers) if ans is None
             ]
@@ -555,28 +578,24 @@ if st.session_state.generated and st.session_state.data is not None:
                     f"Unanswered: {', '.join(map(str, unanswered))}"
                 )
             else:
-                score = 0
+                score   = 0
                 results = []
 
                 for i, q in enumerate(quiz):
                     correct_answer = q["answer"]
-                    user_ans = user_answers[i]
-                    options = q.get("options", [])
+                    user_ans       = user_answers[i]
+                    options        = q.get("options", [])
 
-                    # Check if the user's answer matches the correct answer.
-                    # Gemini sometimes returns just a letter ("A","B","C","D")
-                    # instead of the full option text, so we handle both.
-                    is_correct = False
-                    resolved_correct = correct_answer  # for display
+                    is_correct      = False
+                    resolved_correct = correct_answer
 
-                    # 1) Exact match
+                    # Exact match
                     if user_ans == correct_answer:
                         is_correct = True
-                    # 2) Case/whitespace-insensitive match
+                    # Case/whitespace-insensitive
                     elif user_ans.strip().lower() == correct_answer.strip().lower():
                         is_correct = True
-                    # 3) Letter-based answer: Gemini returned "A"/"B"/"C"/"D"
-                    #    Map it to the actual option by index
+                    # Gemini returned a letter "A"/"B"/"C"/"D"
                     elif correct_answer.strip().upper() in ("A", "B", "C", "D") and options:
                         letter_index = ord(correct_answer.strip().upper()) - ord("A")
                         if 0 <= letter_index < len(options):
@@ -602,14 +621,8 @@ if st.session_state.generated and st.session_state.data is not None:
 
                 if score == len(quiz):
                     st.balloons()
-                    st.success(
-                        "Excellent! You understood the lesson very well."
-                    )
+                    st.success("Excellent! You understood the lesson very well.")
                 elif score >= len(quiz) // 2:
-                    st.info(
-                        "Good job! A quick revision will make it even better."
-                    )
+                    st.info("Good job! A quick revision will make it even better.")
                 else:
-                    st.warning(
-                        "Consider watching the lesson once again."
-                    )
+                    st.warning("Consider watching the lesson once again.")
