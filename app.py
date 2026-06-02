@@ -398,7 +398,7 @@ Educational Content:
 
 
             # TITLE
-            title_img = make_text_image(title_text, font_size=50, max_width=1100)
+            title_img = make_text_image(title_text, font_size=45, max_width=1100)
             title = ImageClip(title_img, transparent=True)
             title = title.with_position(("center", 80))
             title = title.with_duration(video_duration)
