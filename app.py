@@ -231,13 +231,14 @@ The JSON must follow this exact structure:
     "point 1",
     "point 2",
     "point 3"
+    "image_url": "https://example.com/image.png"  
   ],
   "summary": [
     "summary point 1",
     "summary point 2",
     "summary point 3"
   ],
-  "narration": "A detailed explanation of the topic in an Indian university professor style, within 45 seconds when spoken. Use proper punctuation, natural pauses, and paragraph breaks so the speech sounds clear. The tone should be Indian English, friendly, slightly informal, and student-friendly. Do NOT simply read the bullet points — give an engaging explanation of the concepts.",
+  "narration": "A detailed explanation of the topic in an university professor style, within 45 seconds when spoken. Use proper punctuation, natural pauses, and paragraph breaks so the speech sounds clear. The tone should be  English, friendly, slightly informal, and student-friendly. Do NOT simply read the bullet points — give an engaging explanation of the concepts.",
   "summary_narration": "A quick 10-second revision summary of the key points.",
   "quiz": [
     {{
@@ -376,6 +377,12 @@ Educational Content:
             summary_text = summary_text.with_position((90, 550))
             summary_text = summary_text.with_start(video_duration * 0.80)
             summary_text = summary_text.with_duration(video_duration * 0.20)
+            image = Image.open("example.png").convert("RGBA")
+            image_clip = ImageClip(np.array(image), transparent=True)
+            image_clip = image_clip.with_position((900, 400))
+            image_clip = image_clip.with_start(video_duration * 0.50)
+            image_clip = image_clip.with_duration(video_duration * 0.50)   
+            
 
             # =========================================
             # COMBINE VIDEO
