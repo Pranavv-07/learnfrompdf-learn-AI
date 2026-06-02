@@ -286,7 +286,7 @@ Educational Content:
             # ── Adjusted Divider line (Centered, y=120, slightly thicker) ───
             div_img = Image.new("RGBA", (1200, 4), (100, 100, 200, 255))
             divider = ImageClip(np.array(div_img), transparent=True)
-            divider = divider.with_position(("center", 120))
+            divider = divider.with_position(("center", 140))
             divider = divider.with_duration(video_duration)
 
             # ── Bullets  (left column x=90, max_width=720) ──────────────────
